@@ -100,7 +100,7 @@ char** tokenize(char* cmdline) {
     char* cp = cmdline;
 
     while (*cp != '\0') {
-        while (*cp == ' ' || *cp == '\t') cp++;
+        while (*cp == ' ' || *cp == '\t' || *cp == '\n' || *cp == '\r') cp++;
         if (*cp == '\0') break;
 
         if (*cp == '<' || *cp == '>' || *cp == '|' || *cp == ';' || *cp == '&') {
@@ -115,7 +115,7 @@ char** tokenize(char* cmdline) {
         }
 
         char* start = cp;
-        while (*cp != '\0' && *cp != ' ' && *cp != '\t' &&
+        while (*cp != '\0' && *cp != ' ' && *cp != '\t' && *cp != '\n' && *cp != '\r' &&
                *cp != '<' && *cp != '>' && *cp != '|' && *cp != ';' && *cp != '&')
             cp++;
 

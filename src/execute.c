@@ -283,6 +283,68 @@ static int execute_segment(char** tokens, int start, int end, int background) {
     return execute_pipeline(&left, &right, background);
 }
 
+
+/* Execute a condition and choose the then/else command block from its exit status. */
+int execute_if_block(const char* condition_text, const char* then_text, const char* else_text) {
+    char* condition_copy = strdup(condition_text);
+    if (condition_copy == NULL) {
+        perror("strdup");
+        return -1;
+    }
+    char** condition_args = tokenize(condition_copy);
+    if (condition_args == NULL) {
+        free(condition_copy);
+        fprintf(stderr, "Syntax error: invalid if condition.\\n");
+        return -1;
+    }
+
+    pid_t pid = fork();
+    if (pid < 0) {
+        perror("fork");
+        for (int i = 0; condition_args[i] != NULL; i++) free(condition_args[i]);
+        free(condition_args);
+        free(condition_copy);
+        return -1;
+    }
+    if (pid == 0) {
+        execvp(condition_args[0], condition_args);
+        perror(condition_args[0]);
+        _exit(127);
+    }
+
+    int status = 0;
+    while (waitpid(pid, &status, 0) < 0) {
+        if (errno == EINTR) continue;
+        perror("waitpid");
+        status = -1;
+        break;
+    }
+
+    int condition_succeeded = status != -1 && WIFEXITED(status) &&
+                              WEXITSTATUS(status) == 0;
+    for (int i = 0; condition_args[i] != NULL; i++) free(condition_args[i]);
+    free(condition_args);
+    free(condition_copy);
+
+    const char* selected = condition_succeeded ? then_text : else_text;
+    if (selected == NULL || selected[0] == '\\0') return 0;
+
+    char* commands_copy = strdup(selected);
+    if (commands_copy == NULL) {
+        perror("strdup");
+        return -1;
+    }
+    char** commands = tokenize(commands_copy);
+    int result = 0;
+    if (commands != NULL) {
+        result = execute(commands);
+        for (int i = 0; commands[i] != NULL; i++) free(commands[i]);
+        free(commands);
+    }
+    free(commands_copy);
+    return result;
+}
+
 /* Split a line on ; and &, executing each segment in order. */
 int execute(char* arglist[]) {
     int start = 0;

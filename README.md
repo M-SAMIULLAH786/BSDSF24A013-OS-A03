@@ -83,3 +83,18 @@ make clean
 ```
 
 Each assignment feature is developed on its own branch and merged into `main` in the instructor's order. Full build and runtime testing will be completed after all features have been implemented.
+
+## Feature 7 — Conditional statements
+
+The shell supports multiline `if`, `then`, optional `else`, and `fi` blocks. It runs the condition as a child process, waits for it, and checks the result with `WIFEXITED()` and `WEXITSTATUS()`. A zero exit status runs the `then` block; a non-zero or unsuccessful condition runs the `else` block.
+
+Example:
+
+```bash
+if test -f README.md
+then
+  echo "README exists"
+else
+  echo "README not found"
+fi
+```
