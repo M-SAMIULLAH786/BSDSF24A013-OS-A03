@@ -1,11 +1,147 @@
 #include "shell.h"
 #include <dirent.h>
+#include <ctype.h>
 #include <readline/readline.h>
 #include <readline/history.h>
 
 static char** command_candidates;
 static size_t candidate_count;
 static size_t candidate_index;
+
+/* Feature 8: variables are kept in a simple linked list. */
+typedef struct ShellVariable {
+    char* name;
+    char* value;
+    struct ShellVariable* next;
+} ShellVariable;
+
+static ShellVariable* shell_variables = NULL;
+
+static int valid_variable_name(const char* name, size_t length) {
+    if (length == 0 || !(isalpha((unsigned char)name[0]) || name[0] == '_'))
+        return 0;
+    for (size_t i = 1; i < length; i++) {
+        if (!(isalnum((unsigned char)name[i]) || name[i] == '_')) return 0;
+    }
+    return 1;
+}
+
+static ShellVariable* find_shell_variable(const char* name, size_t length) {
+    for (ShellVariable* item = shell_variables; item != NULL; item = item->next) {
+        if (strlen(item->name) == length && strncmp(item->name, name, length) == 0)
+            return item;
+    }
+    return NULL;
+}
+
+/* Returns 1 when the whole input is an assignment, 0 otherwise, -1 on error. */
+int set_shell_variable_from_assignment(const char* line) {
+    if (line == NULL) return 0;
+    const char* equal = strchr(line, '=');
+    if (equal == NULL) return 0;
+
+    /* Assignment must be the complete command; its name cannot contain whitespace. */
+    for (const char* p = line; p < equal; p++) {
+        if (isspace((unsigned char)*p)) return 0;
+    }
+    size_t name_length = (size_t)(equal - line);
+    if (!valid_variable_name(line, name_length)) {
+        fprintf(stderr, "Invalid variable name in assignment.\n");
+        return -1;
+    }
+
+    char* name = strndup(line, name_length);
+    char* value = strdup(equal + 1);
+    if (name == NULL || value == NULL) {
+        perror("strdup");
+        free(name);
+        free(value);
+        return -1;
+    }
+
+    ShellVariable* item = find_shell_variable(name, name_length);
+    if (item != NULL) {
+        free(item->value);
+        item->value = value;
+        free(name);
+        return 1;
+    }
+
+    item = malloc(sizeof(*item));
+    if (item == NULL) {
+        perror("malloc");
+        free(name);
+        free(value);
+        return -1;
+    }
+    item->name = name;
+    item->value = value;
+    item->next = shell_variables;
+    shell_variables = item;
+    return 1;
+}
+
+/* Expand $NAME references. Undefined variables expand to an empty string. */
+char* expand_shell_variables(const char* input) {
+    if (input == NULL) return NULL;
+    size_t capacity = strlen(input) + 1;
+    size_t length = 0;
+    char* output = malloc(capacity);
+    if (output == NULL) {
+        perror("malloc");
+        return NULL;
+    }
+
+    for (size_t i = 0; input[i] != '\0';) {
+        if (input[i] == '$' &&
+            (isalpha((unsigned char)input[i + 1]) || input[i + 1] == '_')) {
+            size_t start = ++i;
+            while (isalnum((unsigned char)input[i]) || input[i] == '_') i++;
+            ShellVariable* item = find_shell_variable(input + start, i - start);
+            const char* replacement = item == NULL ? "" : item->value;
+            size_t replacement_length = strlen(replacement);
+            if (length + replacement_length + 1 > capacity) {
+                size_t new_capacity = capacity;
+                while (length + replacement_length + 1 > new_capacity)
+                    new_capacity *= 2;
+                char* grown = realloc(output, new_capacity);
+                if (grown == NULL) {
+                    perror("realloc");
+                    free(output);
+                    return NULL;
+                }
+                output = grown;
+                capacity = new_capacity;
+            }
+            memcpy(output + length, replacement, replacement_length);
+            length += replacement_length;
+        } else {
+            if (length + 2 > capacity) {
+                size_t new_capacity = capacity * 2;
+                char* grown = realloc(output, new_capacity);
+                if (grown == NULL) {
+                    perror("realloc");
+                    free(output);
+                    return NULL;
+                }
+                output = grown;
+                capacity = new_capacity;
+            }
+            output[length++] = input[i++];
+        }
+    }
+    output[length] = '\0';
+    return output;
+}
+
+void print_shell_variables(void) {
+    if (shell_variables == NULL) {
+        printf("No shell variables set.\n");
+        return;
+    }
+    for (ShellVariable* item = shell_variables; item != NULL; item = item->next)
+        printf("%s=%s\n", item->name, item->value);
+}
 
 static void clear_command_candidates(void) {
     for (size_t i = 0; i < candidate_count; i++) free(command_candidates[i]);

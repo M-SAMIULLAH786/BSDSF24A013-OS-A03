@@ -50,7 +50,6 @@ static int expand_history(char** command) {
     return 1;
 }
 
-
 static char* append_line(char* text, const char* line) {
     size_t old_length = text == NULL ? 0 : strlen(text);
     size_t line_length = strlen(line);
@@ -149,7 +148,6 @@ int main(void) {
     stifle_history(HISTORY_LIMIT);
 
     while (1) {
-        /* Reap completed background children before displaying the next prompt. */
         reap_background_jobs();
 
         cmdline = read_cmd(PROMPT, stdin);
@@ -176,18 +174,29 @@ int main(void) {
             continue;
         }
 
-        arglist = tokenize(cmdline);
+        int assignment_result = set_shell_variable_from_assignment(cmdline);
+        if (assignment_result != 0) {
+            free(cmdline);
+            continue;
+        }
+
+        char* expanded_line = expand_shell_variables(cmdline);
+        if (expanded_line == NULL) {
+            free(cmdline);
+            continue;
+        }
+        arglist = tokenize(expanded_line);
         if (arglist != NULL) {
             int result = execute(arglist);
-
             for (int i = 0; arglist[i] != NULL; i++) free(arglist[i]);
             free(arglist);
-
             if (result == 1) {
+                free(expanded_line);
                 free(cmdline);
                 break;
             }
         }
+        free(expanded_line);
         free(cmdline);
     }
 
