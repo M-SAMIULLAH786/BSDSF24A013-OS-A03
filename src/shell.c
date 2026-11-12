@@ -1,33 +1,107 @@
 #include "shell.h"
+#include <dirent.h>
 #include <readline/readline.h>
 #include <readline/history.h>
 
-/* Built-in names offered when completing the first word. */
-static const char* builtin_names[] = {
-    "cd", "exit", "help", "history", "jobs", NULL
-};
+static char** command_candidates;
+static size_t candidate_count;
+static size_t candidate_index;
 
-static char* command_generator(const char* text, int state) {
-    static int index;
-    size_t length;
+static void clear_command_candidates(void) {
+    for (size_t i = 0; i < candidate_count; i++) {
+        free(command_candidates[i]);
+    }
+    free(command_candidates);
+    command_candidates = NULL;
+    candidate_count = 0;
+    candidate_index = 0;
+}
 
-    if (state == 0) {
-        index = 0;
+static int candidate_exists(const char* name) {
+    for (size_t i = 0; i < candidate_count; i++) {
+        if (strcmp(command_candidates[i], name) == 0) return 1;
+    }
+    return 0;
+}
+
+static void add_candidate(const char* name) {
+    if (name[0] == '\0' || candidate_exists(name)) return;
+
+    char** grown = realloc(command_candidates,
+                           sizeof(char*) * (candidate_count + 1));
+    if (grown == NULL) return;
+
+    command_candidates = grown;
+    command_candidates[candidate_count] = strdup(name);
+    if (command_candidates[candidate_count] != NULL) candidate_count++;
+}
+
+/* Collect built-ins and executable names found in directories listed in PATH. */
+static void collect_command_candidates(void) {
+    static const char* builtins[] = {
+        "cd", "exit", "help", "history", "jobs", NULL
+    };
+
+    clear_command_candidates();
+
+    for (int i = 0; builtins[i] != NULL; i++) {
+        add_candidate(builtins[i]);
     }
 
-    length = strlen(text);
+    const char* path_value = getenv("PATH");
+    if (path_value == NULL) return;
 
-    while (builtin_names[index] != NULL) {
-        const char* name = builtin_names[index++];
-        if (strncmp(name, text, length) == 0) {
-            return strdup(name);
+    char* path_copy = strdup(path_value);
+    if (path_copy == NULL) return;
+
+    char* save_pointer = NULL;
+    char* directory = strtok_r(path_copy, ":", &save_pointer);
+
+    while (directory != NULL) {
+        DIR* folder = opendir(directory[0] == '\0' ? "." : directory);
+        if (folder != NULL) {
+            struct dirent* entry;
+            while ((entry = readdir(folder)) != NULL) {
+                size_t needed = strlen(directory) + strlen(entry->d_name) + 2;
+                char* full_path = malloc(needed);
+                if (full_path == NULL) continue;
+
+                snprintf(full_path, needed, "%s/%s",
+                         directory[0] == '\0' ? "." : directory,
+                         entry->d_name);
+
+                if (access(full_path, X_OK) == 0 &&
+                    !candidate_exists(entry->d_name)) {
+                    add_candidate(entry->d_name);
+                }
+                free(full_path);
+            }
+            closedir(folder);
+        }
+        directory = strtok_r(NULL, ":", &save_pointer);
+    }
+
+    free(path_copy);
+}
+
+static char* command_generator(const char* text, int state) {
+    if (state == 0) {
+        collect_command_candidates();
+        candidate_index = 0;
+    }
+
+    size_t length = strlen(text);
+    while (candidate_index < candidate_count) {
+        const char* candidate = command_candidates[candidate_index++];
+        if (strncmp(candidate, text, length) == 0) {
+            return strdup(candidate);
         }
     }
 
     return NULL;
 }
 
-/* Complete built-in commands at the start; complete paths after a space. */
+/* Complete commands from PATH at the start, and paths after a space. */
 static char** shell_completion(const char* text, int start, int end) {
     (void)end;
 
@@ -39,7 +113,7 @@ static char** shell_completion(const char* text, int start, int end) {
 }
 
 char* read_cmd(char* prompt, FILE* fp) {
-    (void)fp; /* readline reads from the interactive terminal. */
+    (void)fp;
     rl_attempted_completion_function = shell_completion;
     return readline(prompt);
 }
