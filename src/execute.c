@@ -237,33 +237,38 @@ static int execute_segment(char** tokens, int start, int end, int background) {
 int execute_if_block(const char* condition_text, const char* then_text, const char* else_text) {
     char* expanded_condition = expand_shell_variables(condition_text);
     if (expanded_condition == NULL) return -1;
-    char** condition_args = tokenize(expanded_condition);
-    if (condition_args == NULL) {
-        free(expanded_condition);
-        fprintf(stderr, "Syntax error: invalid if condition.\n");
-        return -1;
-    }
+
+    /*
+     * Run the condition through the system shell. This keeps the condition
+     * separate from the then/else command lists and supports normal test
+     * expressions such as: test -n "$NAME".
+     */
     pid_t pid = fork();
     if (pid < 0) {
         perror("fork");
-        for (int i = 0; condition_args[i] != NULL; i++) free(condition_args[i]);
-        free(condition_args); free(expanded_condition); return -1;
+        free(expanded_condition);
+        return -1;
     }
     if (pid == 0) {
-        execvp(condition_args[0], condition_args);
-        perror(condition_args[0]); _exit(127);
+        execl("/bin/sh", "sh", "-c", expanded_condition, (char*)NULL);
+        perror("/bin/sh");
+        _exit(127);
     }
+
     int status = 0;
     while (waitpid(pid, &status, 0) < 0) {
         if (errno == EINTR) continue;
-        perror("waitpid"); status = -1; break;
+        perror("waitpid");
+        status = -1;
+        break;
     }
-    int condition_succeeded = status != -1 && WIFEXITED(status) && WEXITSTATUS(status) == 0;
-    for (int i = 0; condition_args[i] != NULL; i++) free(condition_args[i]);
-    free(condition_args); free(expanded_condition);
+    free(expanded_condition);
 
+    int condition_succeeded = status != -1 && WIFEXITED(status) &&
+                              WEXITSTATUS(status) == 0;
     const char* selected = condition_succeeded ? then_text : else_text;
     if (selected == NULL || selected[0] == '\0') return 0;
+
     char* expanded_commands = expand_shell_variables(selected);
     if (expanded_commands == NULL) return -1;
     char** commands = tokenize(expanded_commands);
