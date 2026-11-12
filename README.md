@@ -39,3 +39,12 @@ make clean
 ```
 
 Later assignment features are developed in separate feature branches and merged in the order specified by the instructor.
+
+## Feature 3 — Command history
+
+- The shell remembers the most recent 20 commands.
+- Type `history` to display saved commands with their numbers.
+- Type `!n` (for example, `!2`) to run a command again by its displayed number.
+- When the history is full, the oldest command is removed.
+
+The `!n` shortcut is expanded before tokenization, and the recalled command is saved as the command that was executed.
