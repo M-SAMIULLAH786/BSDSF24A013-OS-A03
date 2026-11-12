@@ -97,8 +97,8 @@ char** tokenize(char* cmdline) {
     char* cp = cmdline;
 
     while (*cp != '\0') {
-        while (*cp == ' ' || *cp == '\t') cp++;
-        if (*cp == '\0') break;
+        while (*cp == ' ' || *cp == '\t' || *cp == '\n' || *cp == '\r') cp++;
+	if (*cp == '\0') break;
 
         if (*cp == '<' || *cp == '>' || *cp == '|') {
             if (argnum >= MAXARGS) break;
@@ -111,7 +111,8 @@ char** tokenize(char* cmdline) {
 
         char* start = cp;
         while (*cp != '\0' && *cp != ' ' && *cp != '\t' &&
-               *cp != '<' && *cp != '>' && *cp != '|') cp++;
+        *cp != '\n' && *cp != '\r' &&
+        *cp != '<' && *cp != '>' && *cp != '|') cp++;
 
         size_t length = (size_t)(cp - start);
         if (argnum >= MAXARGS) {
