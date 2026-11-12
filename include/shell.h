@@ -20,4 +20,9 @@ int execute(char** arglist);
 int execute_if_block(const char* condition_text, const char* then_text, const char* else_text);
 void reap_background_jobs(void);
 
+/* Feature 8: shell variable management. */
+int set_shell_variable_from_assignment(const char* line);
+char* expand_shell_variables(const char* input);
+void print_shell_variables(void);
+
 #endif // SHELL_H
