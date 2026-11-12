@@ -60,3 +60,33 @@ The shell now uses GNU Readline for interactive input.
 - The build links the GNU Readline library with `-lreadline`.
 
 Install the GNU Readline development package on your Linux system if it is missing (for Debian/Ubuntu: `sudo apt install libreadline-dev`), then rebuild with `make clean && make`.
+
+## Feature 5 — Input/output redirection and pipes
+
+The tokenizer recognizes `<`, `>`, and `|` as separate operators, including when they are typed without spaces around them.
+
+### Input redirection
+
+```bash
+wc -l < input.txt
+```
+
+The shell opens the input file and connects it to standard input using `dup2()`.
+
+### Output redirection
+
+```bash
+ls -l > listing.txt
+```
+
+The shell creates or truncates the output file and connects it to standard output using `dup2()`.
+
+### Pipe
+
+```bash
+ls -l | wc -l
+```
+
+The shell creates a pipe with `pipe()`, starts two child processes, connects the first command's standard output to the second command's standard input, closes unused pipe ends, and waits for both children.
+
+This feature supports one pipe connecting two commands. Redirection can also be used on either side of that pipe. Quoted arguments and multiple chained pipes are outside this feature's current scope.
