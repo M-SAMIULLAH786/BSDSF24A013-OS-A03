@@ -1,22 +1,47 @@
 #include "shell.h"
+#include <readline/readline.h>
+#include <readline/history.h>
+
+/* Built-in names offered when completing the first word. */
+static const char* builtin_names[] = {
+    "cd", "exit", "help", "history", "jobs", NULL
+};
+
+static char* command_generator(const char* text, int state) {
+    static int index;
+    size_t length;
+
+    if (state == 0) {
+        index = 0;
+    }
+
+    length = strlen(text);
+
+    while (builtin_names[index] != NULL) {
+        const char* name = builtin_names[index++];
+        if (strncmp(name, text, length) == 0) {
+            return strdup(name);
+        }
+    }
+
+    return NULL;
+}
+
+/* Complete built-in commands at the start; complete paths after a space. */
+static char** shell_completion(const char* text, int start, int end) {
+    (void)end;
+
+    if (start == 0) {
+        return rl_completion_matches(text, command_generator);
+    }
+
+    return rl_completion_matches(text, rl_filename_completion_function);
+}
 
 char* read_cmd(char* prompt, FILE* fp) {
-    printf("%s", prompt);
-    char* cmdline = (char*) malloc(sizeof(char) * MAX_LEN);
-    int c, pos = 0;
-
-    while ((c = getc(fp)) != EOF) {
-        if (c == '\n') break;
-        cmdline[pos++] = c;
-    }
-
-    if (c == EOF && pos == 0) {
-        free(cmdline);
-        return NULL;
-    }
-
-    cmdline[pos] = '\0';
-    return cmdline;
+    (void)fp; /* readline reads from the interactive terminal. */
+    rl_attempted_completion_function = shell_completion;
+    return readline(prompt);
 }
 
 char** tokenize(char* cmdline) {
@@ -25,26 +50,37 @@ char** tokenize(char* cmdline) {
     }
 
     char** arglist = (char**)malloc(sizeof(char*) * (MAXARGS + 1));
+    if (arglist == NULL) {
+        perror("malloc");
+        return NULL;
+    }
+
     for (int i = 0; i < MAXARGS + 1; i++) {
-        arglist[i] = (char*)malloc(sizeof(char) * ARGLEN);
-        bzero(arglist[i], ARGLEN);
+        arglist[i] = (char*)calloc(ARGLEN, sizeof(char));
+        if (arglist[i] == NULL) {
+            for (int j = 0; j < i; j++) free(arglist[j]);
+            free(arglist);
+            perror("calloc");
+            return NULL;
+        }
     }
 
     char* cp = cmdline;
-    char* start;
-    int len;
     int argnum = 0;
 
     while (*cp != '\0' && argnum < MAXARGS) {
         while (*cp == ' ' || *cp == '\t') cp++;
         if (*cp == '\0') break;
 
-        start = cp;
-        len = 1;
-        while (*++cp != '\0' && !(*cp == ' ' || *cp == '\t')) {
+        char* start = cp;
+        size_t len = 0;
+        while (*cp != '\0' && *cp != ' ' && *cp != '\t') {
+            cp++;
             len++;
         }
-        strncpy(arglist[argnum], start, len);
+
+        if (len >= ARGLEN) len = ARGLEN - 1;
+        memcpy(arglist[argnum], start, len);
         arglist[argnum][len] = '\0';
         argnum++;
     }
