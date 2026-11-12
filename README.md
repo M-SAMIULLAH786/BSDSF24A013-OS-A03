@@ -5,7 +5,7 @@ A basic command-line shell written in C for the Operating Systems Programming As
 ## Project structure
 
 - `src/main.c` — shell main loop
-- `src/shell.c` — command input, Readline completion, and tokenization
+- `src/shell.c` — command input, Readline completion, tokenization, and shell variables
 - `src/execute.c` — built-ins, process creation, redirection, pipes, and jobs
 - `include/shell.h` — shared definitions and function prototypes
 - `Makefile` — build instructions
@@ -28,7 +28,7 @@ The base shell reads a command, tokenizes it, and runs external programs using `
 - `exit` — exit the shell.
 - `cd <directory>` — change the shell's current working directory; uses `HOME` when no directory is given.
 - `help` — display help.
-- `jobs` — list active background jobs (implemented in Feature 6).
+- `jobs` — list active background jobs.
 
 ## Feature 3 — Command history
 
@@ -59,34 +59,15 @@ The shell uses `open()`, `dup2()`, `close()`, and `pipe()`. One pipe connecting 
 
 ## Feature 6 — Command chaining and background processes
 
-- `; ` runs commands sequentially. The next command starts after the previous foreground command finishes.
+- `;` runs commands sequentially.
 - `&` starts a command in the background so the prompt returns immediately.
 - Background process IDs are stored in a job list.
-- `jobs` displays the PIDs that are still active.
-- The shell reaps completed children without blocking by repeatedly calling `waitpid(-1, &status, WNOHANG)` before the next prompt and when listing jobs.
-- A background pipeline tracks both child PIDs.
-
-Examples:
-
-```bash
-pwd ; ls -l ; whoami
-sleep 30 &
-jobs
-ls -l | wc -l &
-jobs
-```
-
-## Clean
-
-```bash
-make clean
-```
-
-Each assignment feature is developed on its own branch and merged into `main` in the instructor's order. Full build and runtime testing will be completed after all features have been implemented.
+- `jobs` displays active PIDs.
+- Completed children are reaped using non-blocking `waitpid()`.
 
 ## Feature 7 — Conditional statements
 
-The shell supports multiline `if`, `then`, optional `else`, and `fi` blocks. It runs the condition as a child process, waits for it, and checks the result with `WIFEXITED()` and `WEXITSTATUS()`. A zero exit status runs the `then` block; a non-zero or unsuccessful condition runs the `else` block.
+The shell supports multiline `if`, `then`, optional `else`, and `fi` blocks. It runs the condition as a child process and checks the result with `WIFEXITED()` and `WEXITSTATUS()`.
 
 Example:
 
@@ -98,3 +79,30 @@ else
   echo "README not found"
 fi
 ```
+
+## Feature 8 — Shell variables
+
+- Assign a variable with `NAME=value`.
+- Variables are stored in a linked list in the shell process.
+- Use `$NAME` in commands to expand a stored variable before tokenization and execution.
+- The `set` built-in lists all shell variables.
+- Reassigning a variable updates its existing value.
+- An undefined variable expands to an empty string.
+
+Example:
+
+```bash
+NAME=Mujtaba
+echo $NAME
+set
+```
+
+Variable assignment is entered as a complete command. This feature supports simple unquoted variable references; full shell quoting and advanced expansion are outside this assignment feature.
+
+## Clean
+
+```bash
+make clean
+```
+
+Each assignment feature is developed on its own branch and merged into `main` in the instructor's order. Full build and runtime testing should be performed on the target Linux environment.
