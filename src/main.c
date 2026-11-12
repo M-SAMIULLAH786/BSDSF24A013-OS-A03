@@ -1,4 +1,5 @@
 #include "shell.h"
+#include <readline/readline.h>
 #include <readline/history.h>
 
 #define HISTORY_LIMIT 20
