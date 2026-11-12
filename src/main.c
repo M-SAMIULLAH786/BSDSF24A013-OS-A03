@@ -61,26 +61,26 @@ static char* append_line(char* text, const char* line) {
         return NULL;
     }
     memcpy(grown + old_length, line, line_length);
-    grown[old_length + line_length] = '\\n';
-    grown[old_length + line_length + 1] = '\\0';
+    grown[old_length + line_length] = '\n';
+    grown[old_length + line_length + 1] = '\0';
     return grown;
 }
 
 static char* trim_line(char* line) {
-    while (*line == ' ' || *line == '\\t') line++;
+    while (*line == ' ' || *line == '\t') line++;
     size_t length = strlen(line);
-    while (length > 0 && (line[length - 1] == ' ' || line[length - 1] == '\\t' ||
-                          line[length - 1] == '\\r' || line[length - 1] == '\\n'))
-        line[--length] = '\\0';
+    while (length > 0 && (line[length - 1] == ' ' || line[length - 1] == '\t' ||
+                          line[length - 1] == '\r' || line[length - 1] == '\n'))
+        line[--length] = '\0';
     return line;
 }
 
 /* Read and execute a multiline if/then/else/fi block. */
 static int read_if_block(const char* first_line) {
     const char* condition_start = first_line + 2;
-    while (*condition_start == ' ' || *condition_start == '\\t') condition_start++;
-    if (*condition_start == '\\0') {
-        fprintf(stderr, "Syntax error: if requires a condition.\\n");
+    while (*condition_start == ' ' || *condition_start == '\t') condition_start++;
+    if (*condition_start == '\0') {
+        fprintf(stderr, "Syntax error: if requires a condition.\n");
         return 0;
     }
 
@@ -88,21 +88,20 @@ static int read_if_block(const char* first_line) {
     char* then_commands = NULL;
     char* else_commands = NULL;
     char* input = NULL;
-    size_t capacity = 0;
     int in_then = 0, in_else = 0, got_then = 0, got_fi = 0;
 
     while ((input = readline("... ")) != NULL) {
         char* line = trim_line(input);
         if (strcmp(line, "then") == 0) {
             if (got_then) {
-                fprintf(stderr, "Syntax error: unexpected then.\\n");
+                fprintf(stderr, "Syntax error: unexpected then.\n");
                 free(input); break;
             }
             got_then = 1;
             in_then = 1;
         } else if (strcmp(line, "else") == 0) {
             if (!got_then || in_else) {
-                fprintf(stderr, "Syntax error: unexpected else.\\n");
+                fprintf(stderr, "Syntax error: unexpected else.\n");
                 free(input); break;
             }
             in_then = 0;
@@ -112,24 +111,22 @@ static int read_if_block(const char* first_line) {
             free(input);
             break;
         } else if (!got_then) {
-            fprintf(stderr, "Syntax error: expected then.\\n");
+            fprintf(stderr, "Syntax error: expected then.\n");
             free(input); break;
         } else if (in_then) {
             then_commands = append_line(then_commands, line);
         } else if (in_else) {
             else_commands = append_line(else_commands, line);
         } else {
-            fprintf(stderr, "Syntax error: unexpected command in conditional block.\\n");
+            fprintf(stderr, "Syntax error: unexpected command in conditional block.\n");
             free(input); break;
         }
         free(input);
-        if ((in_then && then_commands == NULL && errno == ENOMEM) ||
-            (in_else && else_commands == NULL && errno == ENOMEM)) break;
     }
 
     int result = 0;
     if (!got_then || !got_fi) {
-        fprintf(stderr, "Syntax error: conditional block must contain then and fi.\\n");
+        fprintf(stderr, "Syntax error: conditional block must contain then and fi.\n");
     } else {
         result = execute_if_block(condition, then_commands, else_commands);
     }
@@ -166,7 +163,7 @@ int main(void) {
         if (cmdline[0] != '\0') store_command_history(cmdline);
 
         if (strncmp(cmdline, "if", 2) == 0 &&
-            (cmdline[2] == ' ' || cmdline[2] == '\\t')) {
+            (cmdline[2] == ' ' || cmdline[2] == '\t')) {
             read_if_block(cmdline);
             free(cmdline);
             continue;
