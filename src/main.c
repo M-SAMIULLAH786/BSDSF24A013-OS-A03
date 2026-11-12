@@ -1,6 +1,6 @@
 #include "shell.h"
 #include <readline/history.h>
-
+#include <readline/readline.h>
 #define HISTORY_LIMIT 20
 
 static char* command_history[HISTORY_LIMIT];
@@ -84,7 +84,7 @@ static int read_if_block(const char* first_line) {
         return 0;
     }
 
-    char* condition = strdup(condition_start);
+    char* condition = strdup(trim_line((char*)condition_start));
     char* then_commands = NULL;
     char* else_commands = NULL;
     char* input = NULL;
