@@ -17,5 +17,6 @@
 char* read_cmd(char* prompt, FILE* fp);
 char** tokenize(char* cmdline);
 int execute(char** arglist);
+void reap_background_jobs(void);
 
 #endif // SHELL_H

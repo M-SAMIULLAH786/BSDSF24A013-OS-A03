@@ -30,7 +30,7 @@ static void add_candidate(const char* name) {
 }
 
 static void collect_command_candidates(void) {
-    static const char* builtins[] = {"cd", "exit", "help", "history", "jobs", NULL};
+    static const char* builtins[] = {"cd", "exit", "help", "history", "jobs", "set", NULL};
     clear_command_candidates();
     for (int i = 0; builtins[i] != NULL; i++) add_candidate(builtins[i]);
 
@@ -86,12 +86,15 @@ char* read_cmd(char* prompt, FILE* fp) {
     return readline(prompt);
 }
 
-/* Treat <, >, and | as separate tokens, even without surrounding spaces. */
+/* Recognize shell operators even when users do not surround them with spaces. */
 char** tokenize(char* cmdline) {
     if (cmdline == NULL || cmdline[0] == '\0') return NULL;
 
     char** arglist = calloc(MAXARGS + 1, sizeof(char*));
-    if (arglist == NULL) return NULL;
+    if (arglist == NULL) {
+        perror("calloc");
+        return NULL;
+    }
 
     int argnum = 0;
     char* cp = cmdline;
@@ -100,31 +103,33 @@ char** tokenize(char* cmdline) {
         while (*cp == ' ' || *cp == '\t') cp++;
         if (*cp == '\0') break;
 
-        if (*cp == '<' || *cp == '>' || *cp == '|') {
-            if (argnum >= MAXARGS) break;
+        if (*cp == '<' || *cp == '>' || *cp == '|' || *cp == ';' || *cp == '&') {
+            if (argnum >= MAXARGS) {
+                fprintf(stderr, "Too many tokens (maximum %d).\n", MAXARGS);
+                goto token_error;
+            }
             arglist[argnum] = strndup(cp, 1);
-            if (arglist[argnum] == NULL) goto allocation_error;
-            argnum++;
+            if (arglist[argnum++] == NULL) goto token_error;
             cp++;
             continue;
         }
 
         char* start = cp;
         while (*cp != '\0' && *cp != ' ' && *cp != '\t' &&
-               *cp != '<' && *cp != '>' && *cp != '|') cp++;
+               *cp != '<' && *cp != '>' && *cp != '|' && *cp != ';' && *cp != '&')
+            cp++;
 
         size_t length = (size_t)(cp - start);
         if (argnum >= MAXARGS) {
-            fprintf(stderr, "Too many command arguments (maximum %d).\n", MAXARGS);
-            break;
+            fprintf(stderr, "Too many tokens (maximum %d).\n", MAXARGS);
+            goto token_error;
         }
         if (length >= ARGLEN) {
             fprintf(stderr, "Argument is too long (maximum %d characters).\n", ARGLEN - 1);
             length = ARGLEN - 1;
         }
         arglist[argnum] = strndup(start, length);
-        if (arglist[argnum] == NULL) goto allocation_error;
-        argnum++;
+        if (arglist[argnum++] == NULL) goto token_error;
     }
 
     if (argnum == 0) {
@@ -134,7 +139,7 @@ char** tokenize(char* cmdline) {
     arglist[argnum] = NULL;
     return arglist;
 
-allocation_error:
+token_error:
     for (int i = 0; i < argnum; i++) free(arglist[i]);
     free(arglist);
     perror("tokenize");

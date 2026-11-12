@@ -1,6 +1,51 @@
 #include "shell.h"
 #include <fcntl.h>
 
+#define MAX_JOBS 128
+
+static pid_t background_pids[MAX_JOBS];
+static int background_count = 0;
+
+static void remove_background_pid(pid_t pid) {
+    for (int i = 0; i < background_count; i++) {
+        if (background_pids[i] == pid) {
+            for (int j = i + 1; j < background_count; j++)
+                background_pids[j - 1] = background_pids[j];
+            background_count--;
+            return;
+        }
+    }
+}
+
+/* Reap any completed child without blocking the shell. */
+void reap_background_jobs(void) {
+    int status;
+    pid_t pid;
+    while ((pid = waitpid(-1, &status, WNOHANG)) > 0)
+        remove_background_pid(pid);
+}
+
+static void add_background_pid(pid_t pid) {
+    if (background_count < MAX_JOBS) {
+        background_pids[background_count++] = pid;
+        printf("[background] started PID %ld\n", (long)pid);
+    } else {
+        fprintf(stderr, "Job list is full; waiting for PID %ld.\n", (long)pid);
+        waitpid(pid, NULL, 0);
+    }
+}
+
+static void list_background_jobs(void) {
+    reap_background_jobs();
+    if (background_count == 0) {
+        printf("No background jobs.\n");
+        return;
+    }
+    printf("Active background jobs:\n");
+    for (int i = 0; i < background_count; i++)
+        printf("  PID %ld\n", (long)background_pids[i]);
+}
+
 /* Run shell built-ins in the parent shell process. */
 static int run_builtin(char* arglist[]) {
     if (strcmp(arglist[0], "exit") == 0) return 1;
@@ -21,14 +66,16 @@ static int run_builtin(char* arglist[]) {
         printf("  exit              Exit the shell\n");
         printf("  cd <directory>    Change the current directory\n");
         printf("  help              Display this help message\n");
-        printf("  jobs              Show background jobs (later feature)\n");
+        printf("  jobs              List active background processes\n");
         printf("\nRedirection: command < input-file, command > output-file\n");
         printf("Pipe: command1 | command2\n");
+        printf("Chaining: command1 ; command2\n");
+        printf("Background: command &\n");
         return 0;
     }
 
     if (strcmp(arglist[0], "jobs") == 0) {
-        printf("No background jobs (job tracking will be added later).\n");
+        list_background_jobs();
         return 0;
     }
     return -1;
@@ -41,7 +88,6 @@ typedef struct {
     int argc;
 } ParsedCommand;
 
-/* Separate ordinary arguments from input/output redirection operators. */
 static int parse_command(char** tokens, int start, int end, ParsedCommand* parsed) {
     memset(parsed, 0, sizeof(*parsed));
 
@@ -75,7 +121,6 @@ static int parse_command(char** tokens, int start, int end, ParsedCommand* parse
         }
     }
     parsed->argv[parsed->argc] = NULL;
-
     if (parsed->argc == 0) {
         fprintf(stderr, "Syntax error: missing command.\n");
         return -1;
@@ -83,7 +128,6 @@ static int parse_command(char** tokens, int start, int end, ParsedCommand* parse
     return 0;
 }
 
-/* Connect requested files to standard input/output in a child process. */
 static int apply_redirections(const ParsedCommand* command) {
     if (command->input_file != NULL) {
         int fd = open(command->input_file, O_RDONLY);
@@ -98,7 +142,6 @@ static int apply_redirections(const ParsedCommand* command) {
         }
         close(fd);
     }
-
     if (command->output_file != NULL) {
         int fd = open(command->output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
         if (fd < 0) {
@@ -115,8 +158,18 @@ static int apply_redirections(const ParsedCommand* command) {
     return 0;
 }
 
-static int execute_single(ParsedCommand* command) {
-    int pid = fork();
+static int wait_for_child(pid_t pid) {
+    int status;
+    while (waitpid(pid, &status, 0) < 0) {
+        if (errno == EINTR) continue;
+        perror("waitpid");
+        return -1;
+    }
+    return 0;
+}
+
+static int execute_single(ParsedCommand* command, int background) {
+    pid_t pid = fork();
     if (pid < 0) {
         perror("fork");
         return -1;
@@ -128,16 +181,15 @@ static int execute_single(ParsedCommand* command) {
         _exit(127);
     }
 
-    int status;
-    if (waitpid(pid, &status, 0) < 0) {
-        perror("waitpid");
-        return -1;
+    if (background) {
+        add_background_pid(pid);
+        return 0;
     }
-    return 0;
+    return wait_for_child(pid);
 }
 
-/* Execute exactly two commands connected by one pipe. */
-static int execute_pipeline(ParsedCommand* left, ParsedCommand* right) {
+/* Execute two commands connected by one pipe, foreground or background. */
+static int execute_pipeline(ParsedCommand* left, ParsedCommand* right, int background) {
     int pipe_fds[2];
     if (pipe(pipe_fds) < 0) {
         perror("pipe");
@@ -151,7 +203,6 @@ static int execute_pipeline(ParsedCommand* left, ParsedCommand* right) {
         close(pipe_fds[1]);
         return -1;
     }
-
     if (left_pid == 0) {
         close(pipe_fds[0]);
         if (dup2(pipe_fds[1], STDOUT_FILENO) < 0) {
@@ -170,10 +221,9 @@ static int execute_pipeline(ParsedCommand* left, ParsedCommand* right) {
         perror("fork");
         close(pipe_fds[0]);
         close(pipe_fds[1]);
-        waitpid(left_pid, NULL, 0);
+        wait_for_child(left_pid);
         return -1;
     }
-
     if (right_pid == 0) {
         close(pipe_fds[1]);
         if (dup2(pipe_fds[0], STDIN_FILENO) < 0) {
@@ -187,23 +237,29 @@ static int execute_pipeline(ParsedCommand* left, ParsedCommand* right) {
         _exit(127);
     }
 
-    /* Parent must close both ends so readers receive EOF correctly. */
     close(pipe_fds[0]);
     close(pipe_fds[1]);
-
-    int left_status, right_status;
-    if (waitpid(left_pid, &left_status, 0) < 0) perror("waitpid left");
-    if (waitpid(right_pid, &right_status, 0) < 0) perror("waitpid right");
+    if (background) {
+        add_background_pid(left_pid);
+        add_background_pid(right_pid);
+        return 0;
+    }
+    wait_for_child(left_pid);
+    wait_for_child(right_pid);
     return 0;
 }
 
-int execute(char* arglist[]) {
-    int pipe_position = -1;
+static int execute_segment(char** tokens, int start, int end, int background) {
+    if (start >= end) {
+        fprintf(stderr, "Syntax error: empty command.\n");
+        return -1;
+    }
 
-    for (int i = 0; arglist[i] != NULL; i++) {
-        if (strcmp(arglist[i], "|") == 0) {
+    int pipe_position = -1;
+    for (int i = start; i < end; i++) {
+        if (strcmp(tokens[i], "|") == 0) {
             if (pipe_position != -1) {
-                fprintf(stderr, "Only one pipe (two commands) is supported in this feature.\n");
+                fprintf(stderr, "Only one pipe (two commands) is supported.\n");
                 return -1;
             }
             pipe_position = i;
@@ -212,24 +268,41 @@ int execute(char* arglist[]) {
 
     if (pipe_position == -1) {
         ParsedCommand command;
-        int count = 0;
-        while (arglist[count] != NULL) count++;
-        if (parse_command(arglist, 0, count, &command) != 0) return -1;
+        if (parse_command(tokens, start, end, &command) != 0) return -1;
 
-        /* Built-ins without redirection execute in the parent shell. */
-        if (command.input_file == NULL && command.output_file == NULL) {
+        if (!background && command.input_file == NULL && command.output_file == NULL) {
             int builtin_result = run_builtin(command.argv);
             if (builtin_result != -1) return builtin_result;
         }
-        return execute_single(&command);
+        return execute_single(&command, background);
     }
 
     ParsedCommand left, right;
-    if (parse_command(arglist, 0, pipe_position, &left) != 0) return -1;
+    if (parse_command(tokens, start, pipe_position, &left) != 0) return -1;
+    if (parse_command(tokens, pipe_position + 1, end, &right) != 0) return -1;
+    return execute_pipeline(&left, &right, background);
+}
 
-    int count = pipe_position + 1;
+/* Split a line on ; and &, executing each segment in order. */
+int execute(char* arglist[]) {
+    int start = 0;
+    int count = 0;
     while (arglist[count] != NULL) count++;
-    if (parse_command(arglist, pipe_position + 1, count, &right) != 0) return -1;
 
-    return execute_pipeline(&left, &right);
+    for (int i = 0; i <= count; i++) {
+        if (i == count || strcmp(arglist[i], ";") == 0 ||
+            strcmp(arglist[i], "&") == 0) {
+            int background = (i < count && strcmp(arglist[i], "&") == 0);
+            if (i > start) {
+                int result = execute_segment(arglist, start, i, background);
+                if (result == 1) return 1;
+                if (result < 0) return result;
+            } else if (i < count) {
+                fprintf(stderr, "Syntax error: empty command.\n");
+                return -1;
+            }
+            start = i + 1;
+        }
+    }
+    return 0;
 }
