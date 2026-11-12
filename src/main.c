@@ -61,7 +61,7 @@ static char* append_line(char* text, const char* line) {
         return NULL;
     }
     memcpy(grown + old_length, line, line_length);
-    grown[old_length + line_length] = '\n';
+    grown[old_length + line_length] = ';';
     grown[old_length + line_length + 1] = '\0';
     return grown;
 }
@@ -92,6 +92,7 @@ static int read_if_block(const char* first_line) {
 
     while ((input = readline("... ")) != NULL) {
         char* line = trim_line(input);
+        if (*line == '\0') { free(input); continue; }
         if (strcmp(line, "then") == 0) {
             if (got_then) {
                 fprintf(stderr, "Syntax error: unexpected then.\n");
