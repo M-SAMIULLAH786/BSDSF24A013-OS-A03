@@ -65,6 +65,7 @@ static int run_builtin(char* arglist[]) {
         printf("  exit              Exit the shell\n");
         printf("  cd <directory>    Change the shell's current directory\n");
         printf("  help              Display this help message\n");
+        printf("  history           Display command history\n");
         printf("  jobs              List active background processes\n");
         printf("  set               Display shell variables\n");
         printf("\nRedirection: command < input-file, command > output-file\n");
