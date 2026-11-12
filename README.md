@@ -5,8 +5,8 @@ A basic command-line shell written in C for the Operating Systems Programming As
 ## Project structure
 
 - `src/main.c` — shell main loop
-- `src/shell.c` — command input and tokenization
-- `src/execute.c` — built-ins, process creation, and external command execution
+- `src/shell.c` — command input, Readline completion, and tokenization
+- `src/execute.c` — built-ins, process creation, redirection, pipes, and jobs
 - `include/shell.h` — shared definitions and function prototypes
 - `Makefile` — build instructions
 
@@ -17,20 +17,64 @@ make
 ./bin/myshell
 ```
 
+GNU Readline development files are required (Debian/Ubuntu: `sudo apt install libreadline-dev`).
+
 ## Feature 1 — Base shell
 
 The base shell reads a command, tokenizes it, and runs external programs using `fork()`, `execvp()`, and `waitpid()`.
 
 ## Feature 2 — Built-in commands
 
-The following built-ins run directly inside the shell process (before `fork()`):
-
 - `exit` — exit the shell.
-- `cd <directory>` — change the shell's current working directory. With no directory, it attempts to use `HOME`.
-- `help` — display the built-in command list.
-- `jobs` — currently displays a placeholder message; job tracking is added in a later assignment feature.
+- `cd <directory>` — change the shell's current working directory; uses `HOME` when no directory is given.
+- `help` — display help.
+- `jobs` — list active background jobs (implemented in Feature 6).
 
-Try `pwd`, `cd ..`, `pwd`, `help`, `jobs`, and `exit`.
+## Feature 3 — Command history
+
+- Remembers the most recent 20 commands.
+- `history` displays saved commands with their numbers.
+- `!n` runs a command again by its displayed number.
+- The oldest command is removed when the history is full.
+
+## Feature 4 — GNU Readline
+
+- GNU Readline provides interactive input.
+- Up and Down arrow keys navigate command history.
+- Tab completes command names from built-ins and executable programs in `PATH`.
+- Tab completes file and directory names after a space.
+- The build links with `-lreadline`.
+
+## Feature 5 — Input/output redirection and pipes
+
+The tokenizer recognizes `<`, `>`, and `|` even without spaces around them.
+
+```bash
+wc -l < input.txt
+ls -l > listing.txt
+ls -l | wc -l
+```
+
+The shell uses `open()`, `dup2()`, `close()`, and `pipe()`. One pipe connecting two commands is supported; redirection can be used on either side.
+
+## Feature 6 — Command chaining and background processes
+
+- `; ` runs commands sequentially. The next command starts after the previous foreground command finishes.
+- `&` starts a command in the background so the prompt returns immediately.
+- Background process IDs are stored in a job list.
+- `jobs` displays the PIDs that are still active.
+- The shell reaps completed children without blocking by repeatedly calling `waitpid(-1, &status, WNOHANG)` before the next prompt and when listing jobs.
+- A background pipeline tracks both child PIDs.
+
+Examples:
+
+```bash
+pwd ; ls -l ; whoami
+sleep 30 &
+jobs
+ls -l | wc -l &
+jobs
+```
 
 ## Clean
 
@@ -38,55 +82,4 @@ Try `pwd`, `cd ..`, `pwd`, `help`, `jobs`, and `exit`.
 make clean
 ```
 
-Later assignment features are developed in separate feature branches and merged in the order specified by the instructor.
-
-## Feature 3 — Command history
-
-- The shell remembers the most recent 20 commands.
-- Type `history` to display saved commands with their numbers.
-- Type `!n` (for example, `!2`) to run a command again by its displayed number.
-- When the history is full, the oldest command is removed.
-
-The `!n` shortcut is expanded before tokenization, and the recalled command is saved as the command that was executed.
-
-## Feature 4 — GNU Readline
-
-The shell now uses GNU Readline for interactive input.
-
-- Up and Down arrow keys navigate command history.
-- Tab completes built-in command names at the start of a command.
-- Tab completes file and directory names after a space.
-- The existing `history` and `!n` features are retained.
-- The build links the GNU Readline library with `-lreadline`.
-
-Install the GNU Readline development package on your Linux system if it is missing (for Debian/Ubuntu: `sudo apt install libreadline-dev`), then rebuild with `make clean && make`.
-
-## Feature 5 — Input/output redirection and pipes
-
-The tokenizer recognizes `<`, `>`, and `|` as separate operators, including when they are typed without spaces around them.
-
-### Input redirection
-
-```bash
-wc -l < input.txt
-```
-
-The shell opens the input file and connects it to standard input using `dup2()`.
-
-### Output redirection
-
-```bash
-ls -l > listing.txt
-```
-
-The shell creates or truncates the output file and connects it to standard output using `dup2()`.
-
-### Pipe
-
-```bash
-ls -l | wc -l
-```
-
-The shell creates a pipe with `pipe()`, starts two child processes, connects the first command's standard output to the second command's standard input, closes unused pipe ends, and waits for both children.
-
-This feature supports one pipe connecting two commands. Redirection can also be used on either side of that pipe. Quoted arguments and multiple chained pipes are outside this feature's current scope.
+Each assignment feature is developed on its own branch and merged into `main` in the instructor's order. Full build and runtime testing will be completed after all features have been implemented.
