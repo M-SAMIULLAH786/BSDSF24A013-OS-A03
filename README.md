@@ -48,3 +48,15 @@ Later assignment features are developed in separate feature branches and merged 
 - When the history is full, the oldest command is removed.
 
 The `!n` shortcut is expanded before tokenization, and the recalled command is saved as the command that was executed.
+
+## Feature 4 — GNU Readline
+
+The shell now uses GNU Readline for interactive input.
+
+- Up and Down arrow keys navigate command history.
+- Tab completes built-in command names at the start of a command.
+- Tab completes file and directory names after a space.
+- The existing `history` and `!n` features are retained.
+- The build links the GNU Readline library with `-lreadline`.
+
+Install the GNU Readline development package on your Linux system if it is missing (for Debian/Ubuntu: `sudo apt install libreadline-dev`), then rebuild with `make clean && make`.
