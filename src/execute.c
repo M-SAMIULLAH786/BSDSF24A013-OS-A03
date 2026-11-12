@@ -294,7 +294,7 @@ int execute_if_block(const char* condition_text, const char* then_text, const ch
     char** condition_args = tokenize(condition_copy);
     if (condition_args == NULL) {
         free(condition_copy);
-        fprintf(stderr, "Syntax error: invalid if condition.\\n");
+       fprintf(stderr, "Syntax error: invalid if condition.\n");
         return -1;
     }
 
@@ -327,7 +327,7 @@ int execute_if_block(const char* condition_text, const char* then_text, const ch
     free(condition_copy);
 
     const char* selected = condition_succeeded ? then_text : else_text;
-    if (selected == NULL || selected[0] == '\\0') return 0;
+    if (selected == NULL || selected[0] == '\0') return 0;
 
     char* commands_copy = strdup(selected);
     if (commands_copy == NULL) {
